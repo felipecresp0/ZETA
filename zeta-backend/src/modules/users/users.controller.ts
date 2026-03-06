@@ -34,4 +34,12 @@ export class UsersController {
     ) {
         return this.usersService.getUserProfile(targetId, requesterId);
     }
+
+    @Patch('me/push-token')
+    async updatePushToken(
+        @CurrentUser('id') userId: string,
+        @Body('push_token') pushToken: string,
+    ) {
+        return this.usersService.updatePushToken(userId, pushToken);
+    }
 }

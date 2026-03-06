@@ -48,12 +48,23 @@ interface RecentChat {
     participantIds: string[];
 }
 
-// ── Matches mock (hasta que Sergio implemente /matching) ──
-const MOCK_MATCHES: Match[] = [
-    { id: '1', name: 'Ana García', photo: null, career: 'Ing. Informática', university: 'UniZar', year: 1, matchPercent: 85, commonInterests: ['Mates', 'Gaming'] },
-    { id: '2', name: 'Carlos Martín', photo: null, career: 'Ing. Informática', university: 'UniZar', year: 1, matchPercent: 78, commonInterests: ['Fútbol', 'Series'] },
-    { id: '3', name: 'Lucía Rodríguez', photo: null, career: 'Ing. Informática', university: 'UniZar', year: 2, matchPercent: 72, commonInterests: ['Música', 'Lectura'] },
-];
+// ── Helpers para mapear matches de la API ──
+const mapApiMatch = (m: any): Match => {
+    const u = m.matchedUser || {};
+    const uni = u.academicOffer?.university?.short_name
+        || u.academicOffer?.university?.name || '';
+    const career = u.academicOffer?.career?.name || '';
+    return {
+        id: m.id,
+        name: u.name || 'Usuario',
+        photo: u.photo || null,
+        career,
+        university: uni,
+        year: u.year || 1,
+        matchPercent: m.affinity_score || 0,
+        commonInterests: m.common_interests || [],
+    };
+};
 
 // ══════════════════════════════════════════
 export const HomeScreen: React.FC = () => {
@@ -61,13 +72,23 @@ export const HomeScreen: React.FC = () => {
     const nav = useNavigation<any>();
     const [refreshing, setRefreshing] = useState(false);
 
-    const [matches] = useState<Match[]>(MOCK_MATCHES);
+    const [matches, setMatches] = useState<Match[]>([]);
     const [groups, setGroups] = useState<Group[]>([]);
     const [events, setEvents] = useState<EventNear[]>([]);
     const [chats, setChats] = useState<RecentChat[]>([]);
 
     const loadFeed = useCallback(async () => {
         try {
+            // ── Matches IA (datos reales) ──
+            try {
+                const mRes = await api.get('/matches/me');
+                const pending = mRes.data
+                    .filter((m: any) => m.status === 'pending')
+                    .slice(0, 5)
+                    .map(mapApiMatch);
+                setMatches(pending);
+            } catch { setMatches([]); }
+
             // ── Grupos para explorar (datos reales) ──
             try {
                 const data = await getGroups();

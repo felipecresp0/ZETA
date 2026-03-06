@@ -1,13 +1,9 @@
 import axios from 'axios';
 import { Storage } from './storage';
-
-// ⚠️ Cambiar a la IP de tu máquina para Expo Go
-// En Windows: ipconfig → IPv4 de tu red WiFi
-// Ejemplo: 192.168.1.45
-const BASE_URL = 'http://192.168.1.60:3000/api';
+import { API_BASE_URL } from '../config/network';
 
 const api = axios.create({
-    baseURL: BASE_URL,
+    baseURL: API_BASE_URL,
     timeout: 10000,
     headers: { 'Content-Type': 'application/json' },
 });

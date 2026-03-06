@@ -16,22 +16,24 @@ export class User {
     name: string;
 
     @Column({ unique: true })
-    email: string;             // email@unizar.es — validado contra dominio
+    email: string;
 
     @Column()
-    @Exclude()                 // Nunca se serializa en respuestas JSON
+    @Exclude()
     password: string;
 
-    @Column({ nullable: true })
-    photo: string;             // URL foto perfil
+    @Column('text', { array: true, default: '{}' })
+    photos: string[];          // URLs de fotos de perfil (mínimo 2 en onboarding)
 
     @Column({ type: 'int', default: 1 })
-    year: number;              // 1º, 2º, 3º, 4º
+    year: number;
 
     @Column({ default: 'public' })
-    privacy: string;           // public | university | career
+    privacy: string;
 
-    // ── Relación con Oferta Académica (Universidad + Carrera) ──
+    @Column({ nullable: true })
+    push_token: string;
+
     @ManyToOne(() => AcademicOffer, { eager: true, nullable: true })
     @JoinColumn({ name: 'academic_offer_id' })
     academicOffer: AcademicOffer;
@@ -39,7 +41,6 @@ export class User {
     @Column({ nullable: true })
     academic_offer_id?: string;
 
-    // ── Intereses (N:M) ──
     @ManyToMany(() => Interest, { eager: true })
     @JoinTable({
         name: 'user_interests',

@@ -6,6 +6,7 @@ import { Repository, In } from 'typeorm';
 import { User } from './entities/user.entity';
 import { Interest } from '../interests/entities/interest.entity';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import axios from 'axios';
 
 @Injectable()
 export class UsersService {
@@ -16,7 +17,6 @@ export class UsersService {
         private readonly interestRepo: Repository<Interest>,
     ) { }
 
-    // ── Obtener perfil propio (con todas las relaciones) ──
     async getMyProfile(userId: string): Promise<User> {
         const user = await this.userRepo.findOne({
             where: { id: userId },
@@ -32,7 +32,6 @@ export class UsersService {
         return user;
     }
 
-    // ── Actualizar perfil (onboarding paso 2 + edición posterior) ──
     async updateProfile(userId: string, dto: UpdateProfileDto): Promise<User> {
         const user = await this.userRepo.findOne({
             where: { id: userId },
@@ -41,14 +40,12 @@ export class UsersService {
 
         if (!user) throw new NotFoundException('Usuario no encontrado');
 
-        // Campos simples
         if (dto.name !== undefined) user.name = dto.name;
-        if (dto.photo !== undefined) user.photo = dto.photo;
+        if (dto.photos !== undefined) user.photos = dto.photos;
         if (dto.academic_offer_id !== undefined) user.academic_offer_id = dto.academic_offer_id;
         if (dto.year !== undefined) user.year = dto.year;
         if (dto.privacy !== undefined) user.privacy = dto.privacy;
 
-        // Intereses — reemplaza todos si se envían
         if (dto.interest_ids !== undefined) {
             if (dto.interest_ids.length > 0) {
                 user.interests = await this.interestRepo.findBy({
@@ -61,7 +58,13 @@ export class UsersService {
 
         const saved = await this.userRepo.save(user);
 
-        // Devolver con relaciones completas
+        // ── Disparar matching IA si completó onboarding ──
+        if (dto.interest_ids && dto.interest_ids.length > 0 && dto.academic_offer_id) {
+            const n8nUrl = process.env.N8N_WEBHOOK_MATCHING || 'http://localhost:5678/webhook/matching';
+            axios.post(n8nUrl, { user_id: userId })
+                .catch(err => console.error('[Matching] Error al disparar n8n:', err.message));
+        }
+
         return this.getMyProfile(userId);
     }
 
@@ -126,5 +129,10 @@ export class UsersService {
     private sanitize(user: User) {
         const { password, ...result } = user;
         return result;
+    }
+
+    async updatePushToken(userId: string, pushToken: string) {
+    await this.userRepo.update(userId, { push_token: pushToken });
+    return { message: 'Push token guardado' };
     }
 }

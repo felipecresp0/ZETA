@@ -15,6 +15,8 @@ import { ConversationsModule } from './modules/conversations/conversations.modul
 import { ChatModule } from './modules/chat/chat.module';
 import { MatchingModule } from './modules/matching/matching.module';
 import { SeedModule } from './seeds/seed.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -30,8 +32,9 @@ import { SeedModule } from './seeds/seed.module';
       password: process.env.DB_PASSWORD || 'zeta_dev_2025',
       database: process.env.DB_NAME || 'zeta_db',
       autoLoadEntities: true,
-      synchronize: true,         // Solo en dev — en prod usar migraciones
+      synchronize: true,
       logging: process.env.NODE_ENV === 'development',
+      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
     }),
 
     // ── MongoDB (mensajería en tiempo real) ──
@@ -51,6 +54,8 @@ import { SeedModule } from './seeds/seed.module';
     ChatModule,
     MatchingModule,
     SeedModule,
+    UploadsModule,
+    NotificationsModule,
   ],
 })
 export class AppModule { }

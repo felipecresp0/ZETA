@@ -3,9 +3,7 @@
 // Namespace: /chat — requiere JWT en auth.token
 import { io, Socket } from 'socket.io-client';
 import { Storage } from './storage';
-
-// ⚠️ Misma IP que api.ts — sin /api, puerto directo
-const SOCKET_URL = 'http://192.168.1.60:3000/chat';
+import { SOCKET_URL } from '../config/network';
 
 let socket: Socket | null = null;
 

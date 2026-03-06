@@ -3,12 +3,13 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Storage } from '../services/storage';
 import api from '../services/api';
 import { SocketService } from '../services/socket';
+import { registerForPushNotifications } from '../services/notifications';
 
 interface User {
     id: string;
     name: string;
     email: string;
-    photo: string | null;
+    photos: string[];
     year: number;
     privacy: string;
     academic_offer_id: string | null;
@@ -34,14 +35,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [token, setToken] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
-    // ── Onboarding completo? ──
+    // ── Onboarding completo? (requiere academia + intereses + fotos) ──
     const isOnboardingComplete = !!(
         (user?.academic_offer_id || (user as any)?.academicOffer) &&
         user?.interests &&
-        user.interests.length > 0
+        user.interests.length > 0 &&
+        user?.photos &&
+        user.photos.length >= 2
     );
 
-    // ── Restaurar sesión al arrancar ──
     useEffect(() => {
         (async () => {
             try {
@@ -52,6 +54,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     setUser(savedUser);
                     api.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`;
                     try { await SocketService.connect(); } catch (e) { console.warn('Socket reconnect:', e); }
+                    // Registrar push token al restaurar sesión
+                    registerForPushNotifications().catch(console.warn);
                 }
             } catch (e) {
                 console.error('Error restaurando sesión:', e);
@@ -61,19 +65,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })();
     }, []);
 
-    // ── Login ──
     const login = async (email: string, password: string) => {
         const { data } = await api.post('/auth/login', { email, password });
         await persistSession(data.access_token, data.user);
     };
 
-    // ── Register ──
     const register = async (name: string, email: string, password: string) => {
         const { data } = await api.post('/auth/register', { name, email, password });
         await persistSession(data.access_token, data.user);
     };
 
-    // ── Guardar sesión ──
     const persistSession = async (jwt: string, userData: User) => {
         setToken(jwt);
         setUser(userData);
@@ -81,9 +82,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await Storage.setToken(jwt);
         await Storage.setUser(userData);
         try { await SocketService.connect(); } catch (e) { console.warn('Socket connect error:', e); }
+        // Registrar push token después de login/register
+        registerForPushNotifications().catch(console.warn);
     };
 
-    // ── Refrescar usuario (tras completar onboarding) ──
     const refreshUser = async () => {
         try {
             const { data } = await api.get('/users/me');
@@ -94,7 +96,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     };
 
-    // ── Logout ──
     const logout = async () => {
         SocketService.disconnect();
         setToken(null);

@@ -9,12 +9,13 @@ export class UpdateProfileDto {
     name?: string;
 
     @IsOptional()
-    @IsString()
-    photo?: string;
+    @IsArray()
+    @IsString({ each: true })
+    photos?: string[];
 
     @IsOptional()
     @IsString()
-    academic_offer_id?: string;    // Vincula universidad + carrera
+    academic_offer_id?: string;
 
     @IsOptional()
     @IsInt()
@@ -25,7 +26,7 @@ export class UpdateProfileDto {
     @IsOptional()
     @IsArray()
     @IsString({ each: true })
-    interest_ids?: string[];       // Reemplaza todos los intereses
+    interest_ids?: string[];
 
     @IsOptional()
     @IsIn(['public', 'university', 'career'])

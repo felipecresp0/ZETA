@@ -108,12 +108,12 @@ export class GroupsService {
             ...group,
             member_count: group.members?.length || 0,
             members: group.members?.map((m) => ({
-                id: m.user.id,
-                name: m.user.name,
-                photo: m.user.photo,
-                role: m.role,
-                joined_at: m.joined_at,
-            })),
+            id: m.user.id,
+            name: m.user.name,
+            photo: m.user.photos?.[0] || null,
+            role: m.role,
+            joined_at: m.joined_at,
+        })),
         };
     }
 
