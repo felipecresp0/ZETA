@@ -11,6 +11,7 @@ import { Colors } from '../../theme/colors';
 import { Spacing } from '../../theme/spacing';
 import api from '../../services/api';
 import { getGroups, Group, joinGroup } from '../../services/groupService';
+import { ZAvatar } from '../../components/ZAvatar';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.42;
@@ -46,6 +47,7 @@ interface RecentChat {
     time: string;
     unread: number;
     participantIds: string[];
+    photo: string | null;
 }
 
 // ── Helpers para mapear matches de la API ──
@@ -57,7 +59,7 @@ const mapApiMatch = (m: any): Match => {
     return {
         id: m.id,
         name: u.name || 'Usuario',
-        photo: u.photo || null,
+        photo: u.photos?.[0] || u.photo || null,
         career,
         university: uni,
         year: u.year || 1,
@@ -127,25 +129,32 @@ export const HomeScreen: React.FC = () => {
                     .flatMap((c: any) => (c.participant_ids || []).filter((p: string) => p !== user?.id))
                     .filter((id: string) => !nameCache.has(id));
 
-                // Obtener nombres en paralelo
+                // Cache de fotos para chats directos
+                const photoCache = new Map<string, string | null>();
+
+                // Obtener nombres y fotos en paralelo
                 await Promise.all(
                     [...new Set<string>(otherIds)].map(async (id) => {
                         try {
                             const { data: u } = await api.get(`/users/${id}`);
                             nameCache.set(id, u.name);
+                            photoCache.set(id, u.photos?.[0] || null);
                         } catch {
                             nameCache.set(id, 'Usuario');
+                            photoCache.set(id, null);
                         }
                     })
                 );
 
                 const mapped = convs.map((c: any) => {
                     let title = 'Chat';
+                    let photo: string | null = null;
                     if (c.type === 'group') {
                         title = c.group?.name || 'Grupo';
                     } else {
                         const otherId = c.participant_ids?.find((p: string) => p !== user?.id);
                         title = otherId ? (nameCache.get(otherId) || 'Usuario') : 'Chat';
+                        photo = otherId ? (photoCache.get(otherId) || null) : null;
                     }
 
                     return {
@@ -156,6 +165,7 @@ export const HomeScreen: React.FC = () => {
                         time: c.last_message_at ? formatTimeAgo(c.last_message_at) : '',
                         unread: c.unread_count || 0,
                         participantIds: c.participant_ids || [],
+                        photo,
                     };
                 });
                 setChats(mapped);
@@ -215,8 +225,8 @@ export const HomeScreen: React.FC = () => {
             {/* ══════════ HEADER ══════════ */}
             <View style={s.header}>
                 <View style={s.headerLeft}>
-                    <TouchableOpacity style={s.avatar} onPress={() => nav.navigate('Profile')}>
-                        <Text style={s.avatarText}>{getInitials(firstName)}</Text>
+                    <TouchableOpacity onPress={() => nav.navigate('Profile')}>
+                        <ZAvatar name={user?.name || 'U'} photo={user?.photos?.[0]} size={44} />
                     </TouchableOpacity>
                     <View style={{ flex: 1 }}>
                         <Text style={s.greeting}>{getGreeting()}, {firstName} 👋</Text>
@@ -224,10 +234,10 @@ export const HomeScreen: React.FC = () => {
                     </View>
                 </View>
                 <View style={s.headerRight}>
-                    <TouchableOpacity style={s.iconButton}>
+                    <TouchableOpacity style={s.iconButton} onPress={() => nav.navigate('Search')}>
                         <Feather name="search" size={22} color={Colors.text} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={s.iconButton}>
+                    <TouchableOpacity style={s.iconButton} onPress={() => nav.navigate('Notifications')}>
                         <Feather name="bell" size={22} color={Colors.text} />
                         <View style={s.notifDot} />
                     </TouchableOpacity>
@@ -255,7 +265,7 @@ export const HomeScreen: React.FC = () => {
                     renderItem={({ item }) => (
                         <TouchableOpacity style={s.matchCard} activeOpacity={0.85}>
                             <View style={s.matchAvatar}>
-                                <Text style={s.matchAvatarText}>{getInitials(item.name)}</Text>
+                                <ZAvatar name={item.name} photo={item.photo} size={56} />
                             </View>
                             <View style={s.matchBadge}>
                                 <Text style={s.matchBadgeText}>{item.matchPercent}%</Text>
@@ -307,11 +317,14 @@ export const HomeScreen: React.FC = () => {
                                 },
                             })}
                         >
-                            <View style={[s.chatAvatar, chat.type === 'group' && s.chatAvatarGroup]}>
-                                {chat.type === 'group'
-                                    ? <Feather name="users" size={16} color={Colors.white} />
-                                    : <Text style={s.chatAvatarText}>{getInitials(chat.title)}</Text>
-                                }
+                            <View style={s.chatAvatarWrap}>
+                                {chat.type === 'group' ? (
+                                    <View style={[s.chatAvatar, s.chatAvatarGroup]}>
+                                        <Feather name="users" size={16} color={Colors.white} />
+                                    </View>
+                                ) : (
+                                    <ZAvatar name={chat.title} photo={chat.photo} size={44} />
+                                )}
                             </View>
                             <View style={s.chatInfo}>
                                 <Text style={s.chatName} numberOfLines={1}>{chat.title}</Text>
@@ -406,7 +419,7 @@ export const HomeScreen: React.FC = () => {
                         <Text style={s.sectionIcon}>📅</Text>
                         <Text style={s.sectionTitle}>Próximos eventos</Text>
                     </View>
-                    <TouchableOpacity onPress={() => nav.navigate('Calendario')}>
+                    <TouchableOpacity onPress={() => nav.navigate('UNI')}>
                         <Text style={s.seeAll}>Ver todos</Text>
                     </TouchableOpacity>
                 </View>
@@ -481,11 +494,6 @@ const s = StyleSheet.create({
         backgroundColor: Colors.white, borderBottomWidth: 1, borderBottomColor: Colors.border,
     },
     headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-    avatar: {
-        width: 44, height: 44, borderRadius: 22,
-        backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center',
-    },
-    avatarText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
     greeting: { fontSize: 18, fontWeight: '700', color: Colors.text },
     headerSub: { fontSize: 13, color: Colors.textSecondary, marginTop: 1 },
     headerRight: { flexDirection: 'row', gap: 6 },
@@ -518,10 +526,8 @@ const s = StyleSheet.create({
         shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
     },
     matchAvatar: {
-        width: 56, height: 56, borderRadius: 28,
-        backgroundColor: Colors.secondary, justifyContent: 'center', alignItems: 'center', marginBottom: 8,
+        marginBottom: 8,
     },
-    matchAvatarText: { color: Colors.white, fontSize: 20, fontWeight: '700' },
     matchBadge: {
         position: 'absolute', top: 12, right: 12,
         backgroundColor: Colors.success, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
@@ -545,12 +551,12 @@ const s = StyleSheet.create({
         shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
     },
+    chatAvatarWrap: { marginRight: 12 },
     chatAvatar: {
         width: 44, height: 44, borderRadius: 22,
-        backgroundColor: Colors.secondary, justifyContent: 'center', alignItems: 'center', marginRight: 12,
+        backgroundColor: Colors.secondary, justifyContent: 'center', alignItems: 'center',
     },
     chatAvatarGroup: { backgroundColor: Colors.dark },
-    chatAvatarText: { color: Colors.white, fontSize: 14, fontWeight: '700' },
     chatInfo: { flex: 1 },
     chatName: { fontSize: 15, fontWeight: '600', color: Colors.text },
     chatLastMsg: { fontSize: 13, color: Colors.textSecondary, marginTop: 2 },

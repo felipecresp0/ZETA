@@ -18,7 +18,7 @@ export class Group {
     description: string;
 
     @Column({ default: 'general' })
-    type: string;              // general | carrera | interés | estudio
+    type: string;              // general | carrera | interes | estudio
 
     @Column({ default: 'public' })
     privacy: string;           // public | university | private

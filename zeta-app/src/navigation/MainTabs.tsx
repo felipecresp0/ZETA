@@ -4,9 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { HomeScreen } from '../screens/home/HomeScreen';
 import { MatchScreen } from '../screens/match/MatchScreen';
-import GroupsStack from './GroupsStack';  // ← Stack en vez de Screen directa
-import { CalendarScreen } from '../screens/calendar/CalendarScreen';
+import GroupsStack from './GroupsStack';
 import { ChatStack } from './ChatStack';
+import { UniScreen } from '../screens/uni/UniScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -16,7 +16,7 @@ const tabIcon = (name: string, focused: boolean) => {
         Match: focused ? 'heart' : 'heart-outline',
         Grupos: focused ? 'people' : 'people-outline',
         Chat: focused ? 'chatbubbles' : 'chatbubbles-outline',
-        Calendario: focused ? 'calendar' : 'calendar-outline',
+        UNI: focused ? 'school' : 'school-outline',
     };
     return icons[name] || 'ellipse';
 };
@@ -51,7 +51,15 @@ export const MainTabs: React.FC = () => (
         <Tab.Screen name="Home" component={HomeScreen} />
         <Tab.Screen name="Match" component={MatchScreen} />
         <Tab.Screen name="Grupos" component={GroupsStack} />
-        <Tab.Screen name="Chat" component={ChatStack} />
-        <Tab.Screen name="Calendario" component={CalendarScreen} />
+        <Tab.Screen
+            name="Chat"
+            component={ChatStack}
+            listeners={({ navigation }) => ({
+                tabPress: (e) => {
+                    navigation.navigate('Chat', { screen: 'Conversations' });
+                },
+            })}
+        />
+        <Tab.Screen name="UNI" component={UniScreen} />
     </Tab.Navigator>
 );

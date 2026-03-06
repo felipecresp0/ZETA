@@ -33,6 +33,16 @@ export interface UpdateEventPayload {
     location?: string;
 }
 
+export interface RsvpSummary {
+    going_count: number;
+    not_going_count: number;
+    my_status: 'going' | 'not_going' | null;
+    is_creator: boolean;
+    creator_id: string;
+    going_users: { id: string; name: string }[];
+    not_going_users: { id: string; name: string }[];
+}
+
 // ── API calls ──
 const eventsService = {
     /** Mis eventos próximos (de todos mis grupos) */
@@ -68,6 +78,18 @@ const eventsService = {
     /** Eliminar evento */
     remove: async (eventId: string): Promise<void> => {
         await api.delete(`/events/${eventId}`);
+    },
+
+    /** RSVP: confirmar o declinar asistencia */
+    rsvp: async (eventId: string, status: 'going' | 'not_going'): Promise<RsvpSummary> => {
+        const { data } = await api.post(`/events/${eventId}/rsvp`, { status });
+        return data;
+    },
+
+    /** Obtener resumen de RSVP */
+    getRsvp: async (eventId: string): Promise<RsvpSummary> => {
+        const { data } = await api.get(`/events/${eventId}/rsvp`);
+        return data;
     },
 };
 

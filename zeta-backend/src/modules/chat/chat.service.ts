@@ -57,10 +57,19 @@ export class ChatService {
         const saved = await message.save();
 
         // 3. Actualizar preview en PostgreSQL (para la lista de chats)
-        const preview =
-            type === 'text'
-                ? `${senderName}: ${content.substring(0, 80)}`
-                : `${senderName} envió ${type === 'image' ? 'una imagen' : 'un archivo'}`;
+        let preview: string;
+        if (type === 'text') {
+            preview = `${senderName}: ${content.substring(0, 80)}`;
+        } else if (type === 'event') {
+            try {
+                const parsed = JSON.parse(content);
+                preview = `${senderName} creó un evento: ${parsed.name || 'Evento'}`;
+            } catch {
+                preview = `${senderName} creó un evento`;
+            }
+        } else {
+            preview = `${senderName} envió ${type === 'image' ? 'una imagen' : 'un archivo'}`;
+        }
 
         conv.last_message_preview = preview;
         conv.last_message_at = new Date();
@@ -115,6 +124,24 @@ export class ChatService {
         );
 
         return { marked: true };
+    }
+
+    // ── Vaciar mensajes de una conversación (no elimina la conversación) ──
+    async clearMessages(conversationId: string, userId: string) {
+        const conv = await this.convRepo.findOne({
+            where: { id: conversationId },
+        });
+
+        if (!conv || !conv.participant_ids?.includes(userId)) {
+            throw new ForbiddenException('No tienes acceso a esta conversación');
+        }
+
+        await this.messageModel.deleteMany({ conversation_id: conversationId });
+
+        conv.last_message_preview = '';
+        await this.convRepo.save(conv);
+
+        return { cleared: true };
     }
 
     // ── Contar mensajes no leídos por conversación ──

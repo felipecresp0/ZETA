@@ -1,5 +1,5 @@
 import {
-    Controller, Get, Post, Param, Query, UseGuards
+    Controller, Get, Post, Delete, Param, Query, UseGuards
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { ChatService } from '../chat/chat.service';
@@ -65,5 +65,14 @@ export class ConversationsController {
         @CurrentUser('id') userId: string,
     ) {
         return this.chatService.markAsRead(convId, userId);
+    }
+
+    // DELETE /api/conversations/:id/messages — Vaciar chat (elimina mensajes, no la conversación)
+    @Delete(':id/messages')
+    clearMessages(
+        @Param('id') convId: string,
+        @CurrentUser('id') userId: string,
+    ) {
+        return this.chatService.clearMessages(convId, userId);
     }
 }

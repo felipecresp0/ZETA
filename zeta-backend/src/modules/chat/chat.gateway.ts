@@ -124,9 +124,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             this.server.to(`conv:${data.conversation_id}`).emit('message:new', message);
 
             // Emitir actualización de preview para la lista de chats
+            let preview = `${senderName}: ${data.content.substring(0, 80)}`;
+            if (data.type === 'event') {
+                try {
+                    const parsed = JSON.parse(data.content);
+                    preview = `${senderName} creó un evento: ${parsed.name || 'Evento'}`;
+                } catch {
+                    preview = `${senderName} creó un evento`;
+                }
+            }
             this.server.to(`conv:${data.conversation_id}`).emit('conversation:updated', {
                 conversation_id: data.conversation_id,
-                last_message_preview: `${senderName}: ${data.content.substring(0, 80)}`,
+                last_message_preview: preview,
                 last_message_at: new Date(),
             });
 

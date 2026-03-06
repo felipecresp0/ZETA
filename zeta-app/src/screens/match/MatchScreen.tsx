@@ -48,6 +48,10 @@ export const MatchScreen: React.FC = () => {
     const [actionLoading, setActionLoading] = useState(false);
     const [photoIdx, setPhotoIdx] = useState(0);
 
+    // Refs para acceder al estado actual desde el PanResponder
+    const matchesRef = useRef<MatchItem[]>([]);
+    const currentIdxRef = useRef(0);
+
     // ── Animación swipe ──
     const position = useRef(new Animated.ValueXY()).current;
     const rotate = position.x.interpolate({
@@ -93,6 +97,10 @@ export const MatchScreen: React.FC = () => {
         }),
     ).current;
 
+    // Mantener refs sincronizados con el estado
+    matchesRef.current = matches;
+    currentIdxRef.current = currentIdx;
+
     const swipeOut = (dir: 'left' | 'right') => {
         const x = dir === 'right' ? SCREEN_W + 100 : -SCREEN_W - 100;
         Animated.timing(position, {
@@ -100,10 +108,11 @@ export const MatchScreen: React.FC = () => {
             duration: 300,
             useNativeDriver: true,
         }).start(() => {
+            const match = matchesRef.current[currentIdxRef.current];
             if (dir === 'right') {
-                handleAccept(matches[currentIdx]);
+                handleAccept(match);
             } else {
-                handleReject(matches[currentIdx]);
+                handleReject(match);
             }
             position.setValue({ x: 0, y: 0 });
             setPhotoIdx(0);

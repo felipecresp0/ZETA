@@ -16,6 +16,7 @@ import { Colors } from '../../theme/colors';
 import { Spacing } from '../../theme/spacing';
 import api from '../../services/api';
 import { SocketService, ConversationUpdated } from '../../services/socket';
+import { ZAvatar } from '../../components/ZAvatar';
 
 const { width } = Dimensions.get('window');
 
@@ -38,6 +39,7 @@ interface Conversation {
     // Enriquecido en frontend para chats directos
     displayName?: string;
     displayInitials?: string;
+    displayPhoto?: string | null;
 }
 
 export const ConversationsScreen: React.FC = () => {
@@ -64,12 +66,14 @@ export const ConversationsScreen: React.FC = () => {
                                     ...conv,
                                     displayName: otherUser.name,
                                     displayInitials: getInitials(otherUser.name),
+                                    displayPhoto: otherUser.photos?.[0] || null,
                                 };
                             } catch {
                                 return {
                                     ...conv,
                                     displayName: 'Usuario',
                                     displayInitials: 'U',
+                                    displayPhoto: null,
                                 };
                             }
                         }
@@ -181,13 +185,13 @@ export const ConversationsScreen: React.FC = () => {
                 activeOpacity={0.7}
             >
                 {/* Avatar */}
-                <View style={[styles.avatar, isGroup && styles.avatarGroup]}>
-                    {isGroup ? (
+                {isGroup ? (
+                    <View style={[styles.avatar, styles.avatarGroup]}>
                         <Feather name="users" size={20} color={Colors.white} />
-                    ) : (
-                        <Text style={styles.avatarText}>{item.displayInitials}</Text>
-                    )}
-                </View>
+                    </View>
+                ) : (
+                    <ZAvatar name={item.displayName || 'U'} photo={item.displayPhoto} size={52} />
+                )}
 
                 {/* Info */}
                 <View style={styles.convInfo}>

@@ -17,6 +17,7 @@ import { MatchingModule } from './modules/matching/matching.module';
 import { SeedModule } from './seeds/seed.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { SearchModule } from './modules/search/search.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     SeedModule,
     UploadsModule,
     NotificationsModule,
+    SearchModule,
   ],
 })
 export class AppModule { }

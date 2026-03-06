@@ -9,6 +9,7 @@ import { GroupMember } from './entities/group-member.entity';
 import { Conversation } from '../conversations/entities/conversation.entity';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class GroupsService {
@@ -19,6 +20,7 @@ export class GroupsService {
         private readonly memberRepo: Repository<GroupMember>,
         @InjectRepository(Conversation)
         private readonly convRepo: Repository<Conversation>,
+        private readonly notificationsService: NotificationsService,
     ) { }
 
     // ── Crear grupo + unir al creador como admin + crear conversación ──
@@ -155,6 +157,15 @@ export class GroupsService {
                 await this.convRepo.save(conv);
             }
         }
+
+        // Notificar al usuario
+        await this.notificationsService.create({
+            userId,
+            type: 'group_joined',
+            title: 'Te has unido a un grupo',
+            body: `Ahora eres miembro de "${group.name}"`,
+            data: { groupId: group.id, groupName: group.name },
+        });
 
         return { message: 'Te has unido al grupo', group_id: groupId };
     }

@@ -10,7 +10,7 @@ export class CreateGroupDto {
     description?: string;
 
     @IsOptional()
-    @IsIn(['general', 'carrera', 'interés', 'estudio'])
+    @IsIn(['general', 'carrera', 'interes', 'estudio'])
     type?: string;
 
     @IsOptional()

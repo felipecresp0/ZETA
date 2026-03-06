@@ -8,6 +8,11 @@ import { AuthStack } from './AuthStack';
 import { MainTabs } from './MainTabs';
 import { SetupProfileScreen } from '../screens/auth/SetupProfileScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
+import { UserDetailScreen } from '../screens/chat/UserDetailScreen';
+import GroupDetailScreen from '../screens/groups/GroupDetailScreen';
+import { SearchScreen } from '../screens/search/SearchScreen';
+import { NotificationsScreen } from '../screens/notifications/NotificationsScreen';
+import { EventDetailScreen } from '../screens/events/EventDetailScreen';
 import { Colors } from '../theme/colors';
 
 const OnboardingStack = createNativeStackNavigator();
@@ -39,6 +44,31 @@ export const RootNavigator: React.FC = () => {
                     <AppStack.Screen
                         name="Profile"
                         component={ProfileScreen}
+                        options={{ animation: 'slide_from_right' }}
+                    />
+                    <AppStack.Screen
+                        name="UserDetail"
+                        component={UserDetailScreen}
+                        options={{ animation: 'slide_from_right' }}
+                    />
+                    <AppStack.Screen
+                        name="GroupDetailModal"
+                        component={GroupDetailScreen}
+                        options={{ animation: 'slide_from_right' }}
+                    />
+                    <AppStack.Screen
+                        name="Search"
+                        component={SearchScreen}
+                        options={{ animation: 'slide_from_right' }}
+                    />
+                    <AppStack.Screen
+                        name="Notifications"
+                        component={NotificationsScreen}
+                        options={{ animation: 'slide_from_right' }}
+                    />
+                    <AppStack.Screen
+                        name="EventDetail"
+                        component={EventDetailScreen}
                         options={{ animation: 'slide_from_right' }}
                     />
                 </AppStack.Navigator>

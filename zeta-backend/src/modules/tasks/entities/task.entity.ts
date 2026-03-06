@@ -28,6 +28,9 @@ export class Task {
     @Column({ default: 'medium' })
     priority: string;          // low | medium | high | urgent — asignado por IA
 
+    @Column({ default: false })
+    ai_pioritized: boolean;    // true cuando la IA ya estimó prioridad/horas
+
     @Column({ default: 'pending' })
     status: string;            // pending | in_progress | completed
 

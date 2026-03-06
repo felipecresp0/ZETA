@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { Task } from './entities/task.entity';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import axios from 'axios';
 
 @Injectable()
 export class TasksService {
@@ -22,6 +23,12 @@ export class TasksService {
             user_id: userId,
         });
         const saved = await this.taskRepo.save(task);
+
+        // Disparar workflow de priorización IA en n8n
+        const n8nUrl = process.env.N8N_WEBHOOK_TASK_PRIORITY || 'http://localhost:5678/webhook/task-priority';
+        axios.post(n8nUrl, { task_id: saved.id, user_id: userId })
+            .catch(err => console.error('[Tasks] Error al disparar n8n:', err.message));
+
         return this.findOneOrFail(saved.id, userId);
     }
 

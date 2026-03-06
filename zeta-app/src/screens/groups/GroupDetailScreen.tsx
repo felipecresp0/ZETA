@@ -12,8 +12,10 @@ import {
     getGroupById, joinGroup, leaveGroup,
     getGroupMembers, Group, GroupMember,
 } from '../../services/groupService';
+import eventsService, { ZetaEvent } from '../../services/eventsService';
 import api from '../../services/api';
 import { Colors } from '../../theme/colors';
+import { ZAvatar } from '../../components/ZAvatar';
 
 export default function GroupDetailScreen() {
     const navigation = useNavigation<any>();
@@ -25,6 +27,7 @@ export default function GroupDetailScreen() {
     const [members, setMembers] = useState<GroupMember[]>([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
+    const [groupEvents, setGroupEvents] = useState<ZetaEvent[]>([]);
 
     const loadData = useCallback(async () => {
         try {
@@ -34,6 +37,12 @@ export default function GroupDetailScreen() {
             ]);
             setGroup(g);
             setMembers(m);
+
+            // Cargar eventos del grupo
+            try {
+                const evts = await eventsService.getByGroup(groupId);
+                setGroupEvents(evts);
+            } catch { setGroupEvents([]); }
         } catch (e) {
             console.error('Error cargando grupo:', e);
             Alert.alert('Error', 'No se pudo cargar el grupo');
@@ -99,14 +108,17 @@ export default function GroupDetailScreen() {
             // Buscar/crear la conversación del grupo via API
             const { data } = await api.get(`/conversations/group/${groupId}`);
 
-            // Navegar al tab de Chat y luego a la conversación
-            navigation.navigate('Chat', {
-                screen: 'ChatDetail',
+            // Navegar a Main > Chat tab > ChatDetail
+            navigation.navigate('Main', {
+                screen: 'Chat',
                 params: {
-                    conversationId: data.id,
-                    title: group?.name,
-                    type: 'group',
-                    participantIds: members.map(m => m.user_id || m.id),
+                    screen: 'ChatDetail',
+                    params: {
+                        conversationId: data.id,
+                        title: group?.name,
+                        type: 'group',
+                        participantIds: members.map(m => m.user_id || m.id),
+                    },
                 },
             });
         } catch (e: any) {
@@ -225,6 +237,39 @@ export default function GroupDetailScreen() {
                     )}
                 </View>
 
+                {/* Eventos del grupo */}
+                {groupEvents.length > 0 && (
+                    <View style={s.section}>
+                        <Text style={s.sectionTitle}>
+                            Eventos ({groupEvents.length})
+                        </Text>
+                        {groupEvents.map(ev => {
+                            const d = new Date(ev.event_date);
+                            const dateStr = d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+                            const timeStr = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                            return (
+                                <View key={ev.id} style={s.eventRow}>
+                                    <View style={s.eventDateBox}>
+                                        <Text style={s.eventDateDay}>{d.getDate()}</Text>
+                                        <Text style={s.eventDateMonth}>{d.toLocaleDateString('es-ES', { month: 'short' })}</Text>
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={s.eventName}>{ev.name}</Text>
+                                        <Text style={s.eventMeta}>
+                                            {timeStr}{ev.location ? ` · ${ev.location}` : ''}
+                                        </Text>
+                                        {ev.creator && (
+                                            <Text style={s.eventCreator}>
+                                                Creado por {ev.creator.name}
+                                            </Text>
+                                        )}
+                                    </View>
+                                </View>
+                            );
+                        })}
+                    </View>
+                )}
+
                 {/* Miembros */}
                 <View style={s.section}>
                     <Text style={s.sectionTitle}>
@@ -235,21 +280,13 @@ export default function GroupDetailScreen() {
                         // con user como subobjeto o con los datos directamente
                         const memberUser = m.user || m;
                         const name = memberUser.name || 'Usuario';
-                        const photo = memberUser.photo;
+                        const photo = memberUser.photos?.[0] || memberUser.photo || null;
                         const email = memberUser.email || '';
                         const memberId = m.user_id || memberUser.id;
 
                         return (
                             <View key={m.id || idx} style={s.memberRow}>
-                                <View style={s.avatar}>
-                                    {photo ? (
-                                        <Image source={{ uri: photo }} style={s.avatarImg} />
-                                    ) : (
-                                        <Text style={s.avatarText}>
-                                            {name.charAt(0).toUpperCase()}
-                                        </Text>
-                                    )}
-                                </View>
+                                <ZAvatar name={name} photo={photo} size={42} />
                                 <View style={{ flex: 1 }}>
                                     <Text style={s.memberName}>
                                         {name}
@@ -350,4 +387,20 @@ const s = StyleSheet.create({
         backgroundColor: '#FFF3E0', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
     },
     adminBadgeText: { fontSize: 11, fontWeight: '600', color: '#E65100' },
+
+    // Events
+    eventRow: {
+        flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+        paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F5F5F5',
+    },
+    eventDateBox: {
+        width: 44, height: 48, borderRadius: 10,
+        backgroundColor: Colors.primary + '12',
+        justifyContent: 'center', alignItems: 'center',
+    },
+    eventDateDay: { fontSize: 18, fontWeight: '700', color: Colors.primary, lineHeight: 22 },
+    eventDateMonth: { fontSize: 10, fontWeight: '600', color: Colors.primary, textTransform: 'uppercase' },
+    eventName: { fontSize: 14, fontWeight: '600', color: '#333' },
+    eventMeta: { fontSize: 12, color: '#999', marginTop: 2 },
+    eventCreator: { fontSize: 11, color: '#BBB', marginTop: 2 },
 });

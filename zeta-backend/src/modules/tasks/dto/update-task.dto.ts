@@ -1,5 +1,5 @@
 import {
-    IsOptional, IsString,
+    IsOptional, IsString, IsBoolean,
     IsIn, IsDateString, IsNumber, Min,
 } from 'class-validator';
 
@@ -36,4 +36,8 @@ export class UpdateTaskDto {
     @IsOptional()
     @IsString()
     group_id?: string;
+
+    @IsOptional()
+    @IsBoolean()
+    ai_pioritized?: boolean;
 }

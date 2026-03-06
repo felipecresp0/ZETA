@@ -31,6 +31,25 @@ export class EventsController {
         return this.eventsService.findByGroup(groupId);
     }
 
+    // POST /api/events/:id/rsvp — Confirmar o declinar asistencia
+    @Post(':id/rsvp')
+    rsvp(
+        @Param('id') eventId: string,
+        @Body('status') status: 'going' | 'not_going',
+        @CurrentUser('id') userId: string,
+    ) {
+        return this.eventsService.rsvp(eventId, userId, status);
+    }
+
+    // GET /api/events/:id/rsvp — Obtener resumen de asistencia
+    @Get(':id/rsvp')
+    getRsvp(
+        @Param('id') eventId: string,
+        @CurrentUser('id') userId: string,
+    ) {
+        return this.eventsService.getRsvpSummary(eventId, userId);
+    }
+
     // GET /api/events/:id — Detalle de evento
     @Get(':id')
     findOne(@Param('id') eventId: string) {
