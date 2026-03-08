@@ -30,7 +30,7 @@ export class UpdateTaskDto {
     priority?: string;
 
     @IsOptional()
-    @IsIn(['pending', 'in_progress', 'done'])
+    @IsIn(['pending', 'in_progress', 'completed'])
     status?: string;
 
     @IsOptional()

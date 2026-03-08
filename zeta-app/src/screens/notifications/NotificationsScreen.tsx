@@ -78,7 +78,13 @@ export const NotificationsScreen: React.FC = () => {
         }
     };
 
-    const handleNotifPress = (notif: AppNotification) => {
+    const handleNotifPress = async (notif: AppNotification) => {
+        // Borrar la notificación al pulsarla (marcarla como vista)
+        try {
+            await api.delete(`/notifications/${notif.id}`);
+            setNotifications(prev => prev.filter(n => n.id !== notif.id));
+        } catch {}
+
         switch (notif.type) {
             case 'match':
                 nav.navigate('Main', { screen: 'Match' });
@@ -103,7 +109,26 @@ export const NotificationsScreen: React.FC = () => {
                     nav.navigate('UserDetail', { userId: notif.data.senderId });
                 }
                 break;
+            case 'task_created':
+                nav.navigate('Main', { screen: 'UNI' });
+                break;
         }
+    };
+
+    const handleDeleteAll = () => {
+        Alert.alert('Borrar notificaciones', 'Eliminar todas las notificaciones?', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Borrar todas', style: 'destructive', onPress: async () => {
+                    try {
+                        await api.delete('/notifications/all');
+                        setNotifications([]);
+                    } catch {
+                        Alert.alert('Error', 'No se pudieron borrar');
+                    }
+                },
+            },
+        ]);
     };
 
     const getNotifIcon = (type: string): { name: string; bg: string; color: string } => {
@@ -118,6 +143,8 @@ export const NotificationsScreen: React.FC = () => {
                 return { name: 'checkmark-circle', bg: '#D1FAE5', color: '#10B981' };
             case 'connection_request':
                 return { name: 'person-add', bg: '#FEF3C7', color: '#F59E0B' };
+            case 'task_created':
+                return { name: 'checkmark-done', bg: '#D1FAE5', color: '#10B981' };
             default:
                 return { name: 'notifications', bg: '#F3F4F6', color: '#6B7280' };
         }
@@ -159,7 +186,13 @@ export const NotificationsScreen: React.FC = () => {
                     <Feather name="arrow-left" size={24} color={Colors.text} />
                 </TouchableOpacity>
                 <Text style={s.headerTitle}>Notificaciones</Text>
-                <View style={{ width: 32 }} />
+                {generalNotifs.length > 0 ? (
+                    <TouchableOpacity onPress={handleDeleteAll} style={s.deleteAllBtn}>
+                        <Feather name="trash-2" size={18} color={Colors.error} />
+                    </TouchableOpacity>
+                ) : (
+                    <View style={{ width: 32 }} />
+                )}
             </View>
 
             {sections.length === 0 ? (
@@ -273,6 +306,7 @@ const s = StyleSheet.create({
     },
     backBtn: { padding: 4 },
     headerTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
+    deleteAllBtn: { padding: 4 },
 
     list: { padding: Spacing.screenPadding, paddingBottom: 80 },
 

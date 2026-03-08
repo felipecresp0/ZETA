@@ -96,6 +96,11 @@ MONGO_URI=mongodb://localhost:27017/zeta_chat
 # JWT
 JWT_SECRET=zeta_secret_key_super_larga_2025_mvp
 JWT_EXPIRATION=7d
+
+# n8n Webhooks (Gemini IA)
+N8N_WEBHOOK_MATCHING=https://<tunnel>.trycloudflare.com/webhook/matching
+N8N_WEBHOOK_TASK_PRIORITY=https://<tunnel>.trycloudflare.com/webhook/task-priority
+N8N_WEBHOOK_CALENDAR_CONFLICTS=https://<tunnel>.trycloudflare.com/webhook/calendar-conflict
 ```
 
 > **Importante**: No subir `.env` a Git. Está incluido en `.gitignore`. Para referencia, usar `.env.example`.
@@ -189,20 +194,32 @@ zeta-backend/
 │   │   │
 │   │   ├── events/
 │   │   │   ├── events.module.ts
-│   │   │   ├── events.controller.ts          # CRUD eventos + upcoming
-│   │   │   ├── events.service.ts
+│   │   │   ├── events.controller.ts          # CRUD eventos + RSVP + conflictos IA
+│   │   │   ├── events.service.ts             # Integración n8n calendar-conflict
 │   │   │   ├── dto/
-│   │   │   │   ├── create-event.dto.ts
+│   │   │   │   ├── create-event.dto.ts       # group_id opcional (eventos universitarios)
 │   │   │   │   └── update-event.dto.ts
 │   │   │   └── entities/
-│   │   │       └── event.entity.ts
+│   │   │       ├── event.entity.ts           # group_id nullable
+│   │   │       └── event-rsvp.entity.ts      # Confirmación asistencia
 │   │   │
 │   │   ├── tasks/
 │   │   │   ├── tasks.module.ts
-│   │   │   ├── tasks.controller.ts           # CRUD tareas personales/grupo
-│   │   │   ├── tasks.service.ts
+│   │   │   ├── tasks.controller.ts           # CRUD tareas + callback IA
+│   │   │   ├── tasks.service.ts              # Integración n8n task-priority
+│   │   │   ├── dto/
+│   │   │   │   ├── create-task.dto.ts
+│   │   │   │   ├── update-task.dto.ts
+│   │   │   │   └── ai-callback.dto.ts        # DTO para callback n8n
 │   │   │   └── entities/
 │   │   │       └── task.entity.ts            # Prioridad y estimación por IA
+│   │   │
+│   │   ├── notifications/
+│   │   │   ├── notifications.module.ts
+│   │   │   ├── notifications.controller.ts   # CRUD notificaciones + unread count
+│   │   │   ├── notifications.service.ts      # Crear, leer, borrar, push Expo
+│   │   │   └── entities/
+│   │   │       └── notification.entity.ts    # Tipo, título, body, data JSONB
 │   │   │
 │   │   ├── conversations/
 │   │   │   ├── conversations.module.ts
@@ -224,10 +241,10 @@ zeta-backend/
 │   │   │
 │   │   └── matching/
 │   │       ├── matching.module.ts
-│   │       ├── matching.controller.ts        # GET /matching/suggestions
-│   │       ├── matching.service.ts           # Llama webhook n8n
-│   │       └── dto/
-│   │           └── match-result.dto.ts
+│   │       ├── matching.controller.ts        # Matches: accept/reject + connections
+│   │       ├── matching.service.ts           # Integración n8n matching + mutual check
+│   │       └── entities/
+│   │           └── match.entity.ts           # user_id, matched_user_id, status, affinity
 │   │
 │   └── seeds/
 │       ├── seed.module.ts
@@ -290,21 +307,46 @@ El registro extrae el dominio del email (ej: `a28602@svalero.com` → `svalero.c
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| GET | `/events/upcoming` | Sí | Próximos eventos de todos los grupos del usuario (máx. 20). |
+| GET | `/events/upcoming` | Sí | Próximos eventos del usuario: de sus grupos + universitarios (sin grupo). Máx. 30. |
 | GET | `/events/group/:groupId` | Sí | Eventos de un grupo específico. |
 | GET | `/events/:id` | Sí | Detalle de un evento. |
-| POST | `/events` | Sí | Crear evento en un grupo (requiere ser miembro). Body: `name`, `event_date`, `group_id`, `description?`, `location?`. |
+| POST | `/events` | Sí | Crear evento. Body: `name`, `event_date`, `description?`, `location?`, `group_id?`. Si no se pasa `group_id`, se crea como evento universitario visible para todos. Devuelve análisis de conflictos IA si los hay. |
 | PATCH | `/events/:id` | Sí | Actualizar evento (solo creador o admin del grupo). |
 | DELETE | `/events/:id` | Sí | Eliminar evento (solo creador o admin del grupo). |
+| POST | `/events/:id/rsvp` | Sí | Confirmar o declinar asistencia. Body: `{ status: 'going' \| 'not_going' }`. Devuelve conflictos IA al confirmar. |
+| GET | `/events/:id/rsvp` | Sí | Resumen de asistencia: going/not_going counts, lista de usuarios, estado propio. |
+| GET | `/events/:id/conflicts` | Sí | Analizar conflictos IA de un evento existente (n8n + Gemini). |
+| POST | `/events/check-conflicts` | Sí | Analizar conflictos IA en lote. Body: `{ event_ids: string[] }`. |
 
 ### Tasks (`/api/tasks`)
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
 | GET | `/tasks/me` | Sí | Tareas del usuario (personales + de sus grupos). |
-| POST | `/tasks` | Sí | Crear tarea. Body: `title`, `subject?`, `due_date?`, `group_id?`. |
+| POST | `/tasks` | Sí | Crear tarea. Body: `title`, `subject?`, `due_date?`, `group_id?`. La IA (n8n + Gemini) asigna prioridad y horas estimadas automáticamente via callback. |
 | PATCH | `/tasks/:id` | Sí | Actualizar tarea (estado, prioridad, etc.). |
 | DELETE | `/tasks/:id` | Sí | Eliminar tarea. |
+| POST | `/tasks/ai-callback` | No | Callback interno de n8n para actualizar prioridad y horas estimadas por IA. |
+
+### Notifications (`/api/notifications`)
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/notifications` | Sí | Notificaciones del usuario (últimas 50, ordenadas por fecha). |
+| GET | `/notifications/unread-count` | Sí | Contador de notificaciones no leídas. |
+| POST | `/notifications/read-all` | Sí | Marcar todas las notificaciones como leídas. |
+| POST | `/notifications/:id/read` | Sí | Marcar una notificación como leída. |
+| DELETE | `/notifications/all` | Sí | Eliminar todas las notificaciones del usuario. |
+| DELETE | `/notifications/:id` | Sí | Eliminar una notificación específica. |
+
+### Matching (`/api/matches`)
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/matches/me` | Sí | Obtener todos los matches del usuario (pending, accepted, rejected). |
+| POST | `/matches/:id/accept` | Sí | Aceptar un match sugerido. Devuelve `{ mutual: true }` si ambos se han aceptado. |
+| POST | `/matches/:id/reject` | Sí | Rechazar un match sugerido. |
+| GET | `/matches/connections` | Sí | Conexiones mutuas (ambos se han aceptado). Solo devuelve matches recíprocos. |
 
 ### Conversations (`/api/conversations`)
 
@@ -325,12 +367,6 @@ Conexión WebSocket en `ws://localhost:3000` con Socket.IO. Requiere token JWT e
 | `typing` | Cliente → Server | `{ conversation_id }` | Indicador "está escribiendo..." |
 | `user_typing` | Server → Cliente | `{ user_id, user_name }` | Notificar a otros participantes |
 | `message_read` | Cliente → Server | `{ message_id }` | Marcar mensaje como leído |
-
-### Matching (`/api/matching`) — Integración n8n
-
-| Método | Ruta | Auth | Descripción |
-|---|---|---|---|
-| GET | `/matching/suggestions` | Sí | Sugerencias de conexión basadas en intereses, carrera y universidad. Llama a webhook n8n → GPT-4.1. |
 
 ---
 
@@ -370,13 +406,16 @@ El seed es idempotente — no duplica datos si ya existen.
 | University | `universities` | Nombre, dominio email, acrónimo, logo |
 | Career | `careers` | Nombre, área de conocimiento |
 | AcademicOffer | `academic_offers` | Cruce universidad × carrera (modalidad, estado) |
-| User | `users` | Entidad central: nombre, email, foto, año, privacidad |
+| User | `users` | Entidad central: nombre, email, foto, año, privacidad, push_token |
 | Interest | `interests` | Nombre, categoría, icono emoji |
 | — | `user_interests` | Tabla puente N:M (User ↔ Interest) |
 | Group | `groups` | Nombre, tipo, privacidad, creador |
 | GroupMember | `group_members` | Tabla N:M con rol (admin/member) + fecha |
-| Event | `events` | Nombre, fecha, ubicación, grupo, creador |
-| Task | `tasks` | Título, asignatura, fecha, prioridad IA, estado |
+| Event | `events` | Nombre, fecha, ubicación, grupo (nullable), creador |
+| EventRsvp | `event_rsvps` | Confirmación de asistencia (going/not_going) por usuario |
+| Task | `tasks` | Título, asignatura, fecha, prioridad IA, horas estimadas, estado |
+| Match | `matches` | Sugerencias IA de conexión: user_id, matched_user_id, status, affinity_score |
+| Notification | `notifications` | Tipo, título, body, data (JSONB), read, user_id |
 | Conversation | `conversations` | Tipo (direct/group), participantes, último mensaje |
 
 ## Schemas MongoDB (Mongoose)
@@ -631,17 +670,25 @@ Asegurarse de que el frontend usa la IP local de la máquina (no `localhost`) y 
 
 ---
 
-## Inteligencia Artificial (n8n)
+## Inteligencia Artificial (n8n + Gemini)
 
-Los flujos de IA se ejecutan fuera del backend principal, en una instancia de n8n que conecta con la API de OpenAI (GPT-4.1):
+Los flujos de IA se ejecutan fuera del backend, en una instancia de **n8n** que conecta con **Google Gemini** para análisis inteligente:
 
 | Workflow | Webhook | Descripción |
 |---|---|---|
-| Matching | `/webhook/matching` | Compara intereses, carrera y universidad para sugerir conexiones |
-| Task Priority | `/webhook/task-priority` | Asigna prioridad y tiempo estimado a tareas |
-| Calendar Conflict | `/webhook/calendar-conflict` | Detecta conflictos de horarios |
+| Matching | `/webhook/matching` | Compara intereses, carrera y universidad para sugerir conexiones con puntuación de afinidad |
+| Task Priority | `/webhook/task-priority` | Asigna prioridad (low/medium/high/urgent) y tiempo estimado en horas a tareas nuevas |
+| Calendar Conflict | `/webhook/calendar-conflict` | Detecta conflictos evento-evento, evento-tarea y tarea-tarea, con recomendaciones y horarios alternativos |
 
-Las URLs se configuran en `.env` (`N8N_BASE_URL`, `N8N_MATCHING_WEBHOOK`, etc.) y el `MatchingService` hace la llamada HTTP al webhook correspondiente.
+Las URLs se configuran en `.env`:
+
+```env
+N8N_WEBHOOK_MATCHING=https://<tunnel>.trycloudflare.com/webhook/matching
+N8N_WEBHOOK_TASK_PRIORITY=https://<tunnel>.trycloudflare.com/webhook/task-priority
+N8N_WEBHOOK_CALENDAR_CONFLICTS=https://<tunnel>.trycloudflare.com/webhook/calendar-conflict
+```
+
+> **Nota**: Los túneles de Cloudflare (`trycloudflare.com`) cambian cada vez que se reinicia n8n. Actualizar `.env` con la nueva URL tras cada reinicio. Para desarrollo local sin túnel, el fallback apunta a `http://localhost:5678/webhook/...`.
 
 ---
 

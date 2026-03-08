@@ -17,9 +17,10 @@ App multiplataforma (iOS/Android/Web) para conectar el mundo académico y social
 | Socket.IO Client | 4.x | Chat en tiempo real (WebSockets) |
 | Axios | 1.x | Cliente HTTP para la API REST |
 | AsyncStorage | 2.x | Persistencia local del JWT |
-| react-native-calendars | 1.1314+ | Calendario mensual en CalendarScreen |
+| react-native-calendars | 1.1314+ | Calendario mensual con multi-dot marking |
+| @react-native-community/datetimepicker | — | Selector nativo de fecha/hora |
 | react-native-safe-area-context | 5.x | Safe areas (notch, Dynamic Island) |
-| Ionicons (expo/vector-icons) | — | Iconografía |
+| Feather + Ionicons (expo/vector-icons) | — | Iconografía |
 
 ---
 
@@ -144,27 +145,48 @@ zeta-app/
 │   │   ├── auth/
 │   │   │   ├── WelcomeScreen.tsx     # Pantalla de bienvenida con logo
 │   │   │   ├── LoginScreen.tsx       # Login con email institucional
-│   │   │   └── RegisterScreen.tsx    # Registro con validación de dominio
+│   │   │   ├── RegisterScreen.tsx    # Registro con validación de dominio
+│   │   │   └── OnboardingScreen.tsx  # Selección universidad/carrera/intereses
 │   │   │
-│   │   └── main/
-│   │       ├── HomeScreen.tsx        # Feed principal / dashboard
-│   │       ├── GroupsScreen.tsx      # Lista de grupos del usuario
-│   │       ├── ConversationsScreen.tsx # Lista de chats
-│   │       ├── ChatScreen.tsx        # Chat 1:1 / grupal (WebSocket)
-│   │       ├── CalendarScreen.tsx    # Calendario mensual + eventos del día
+│   │   ├── home/
+│   │   │   └── HomeScreen.tsx        # Dashboard: matches, grupos, eventos, chats
+│   │   │
+│   │   ├── match/
+│   │   │   └── MatchScreen.tsx       # Swipe cards de matching IA + conexiones
+│   │   │
+│   │   ├── groups/
+│   │   │   └── GroupsScreen.tsx      # Lista de grupos del usuario
+│   │   │
+│   │   ├── chat/
+│   │   │   ├── ConversationsScreen.tsx # Lista de chats
+│   │   │   └── ChatScreen.tsx        # Chat real-time + eventos + RSVP + conflictos IA
+│   │   │
+│   │   ├── uni/
+│   │   │   └── UniScreen.tsx         # Calendario + Eventos + Tareas (3 tabs)
+│   │   │
+│   │   ├── notifications/
+│   │   │   └── NotificationsScreen.tsx # Notificaciones + solicitudes conexión
+│   │   │
+│   │   └── profile/
 │   │       └── ProfileScreen.tsx     # Perfil del usuario
 │   │
 │   ├── services/
 │   │   ├── api.ts                    # Instancia Axios + interceptor JWT
 │   │   ├── authService.ts           # POST /auth/login, /auth/register
-│   │   ├── eventsService.ts         # CRUD /events/*
+│   │   ├── eventsService.ts         # CRUD eventos + RSVP + conflictos IA
+│   │   ├── tasksService.ts          # CRUD tareas + callback IA
+│   │   ├── groupService.ts          # CRUD grupos + miembros
 │   │   └── socketService.ts         # Conexión Socket.IO para chat
+│   │
+│   ├── components/
+│   │   └── ZAvatar.tsx              # Avatar reutilizable con foto o iniciales
 │   │
 │   ├── hooks/
 │   │   └── useEvents.ts             # Hook: carga eventos + agrupa por fecha
 │   │
 │   └── theme/
-│       └── colors.ts                # Paleta de colores Zeta
+│       ├── colors.ts                # Paleta de colores Zeta
+│       └── spacing.ts              # Constantes de espaciado
 │
 └── assets/                          # Imágenes, fuentes, splash screen
 ```
@@ -196,12 +218,20 @@ Definida en `src/theme/colors.ts`:
 - **RegisterScreen** — Nombre + email institucional + contraseña, valida dominio contra `POST /api/auth/register`
 
 ### App Principal (Bottom Tabs)
-- **HomeScreen** — Dashboard con feed de actividad
+- **HomeScreen** — Dashboard con matches IA, grupos, eventos próximos y chats recientes. Icono de campana con badge rojo condicional (solo si hay notificaciones no leídas)
+- **MatchScreen** — Sistema de swipe cards para aceptar/rechazar matches IA. Polling automático para nuevos usuarios. Solo muestra conexiones mutuas
 - **GroupsScreen** — Lista de grupos del usuario, crear/unirse a grupos
 - **ConversationsScreen** — Lista de conversaciones (1:1 y grupales) ordenadas por último mensaje
-- **ChatScreen** — Mensajería en tiempo real vía Socket.IO con typing indicators y read receipts
-- **CalendarScreen** — Calendario mensual interactivo con dots en días con eventos, lista de eventos del día seleccionado
+- **ChatScreen** — Mensajería en tiempo real vía Socket.IO con typing indicators, read receipts, creación de eventos con análisis de conflictos IA, y gestión de asistencia (RSVP)
+- **UniScreen** — Pantalla unificada con 3 tabs:
+  - **Calendario** — Calendario mensual con dots multicolor (azul=eventos, naranja=tareas, rojo=conflictos IA). Detalle del día con EventCards y banner de análisis IA
+  - **Eventos** — Lista de eventos próximos con conflictos IA inline. FAB para crear eventos universitarios o de grupo con selector de visibilidad
+  - **Tareas** — Lista de tareas con prioridad y horas estimadas por IA. Polling para actualización tras análisis IA
 - **ProfileScreen** — Datos del usuario, carrera, intereses, cerrar sesión
+
+### Pantallas Adicionales
+- **NotificationsScreen** — Solicitudes de conexión + actividad reciente. Botón para borrar todas las notificaciones. Al pulsar una notificación se elimina y navega al contenido
+- **OnboardingScreen** — Selección de universidad, carrera, año e intereses tras el registro
 
 ---
 
@@ -221,8 +251,23 @@ Todas las llamadas HTTP pasan por `src/services/api.ts`. Endpoints principales:
 | GET | `/groups` | Mis grupos |
 | POST | `/groups` | Crear grupo |
 | POST | `/groups/:id/join` | Unirse a grupo |
-| GET | `/events/upcoming` | Mis próximos eventos |
-| POST | `/events` | Crear evento en un grupo |
+| GET | `/events/upcoming` | Mis próximos eventos (grupos + universitarios) |
+| POST | `/events` | Crear evento (con o sin grupo) |
+| POST | `/events/:id/rsvp` | Confirmar/declinar asistencia |
+| GET | `/events/:id/rsvp` | Resumen de asistencia |
+| POST | `/events/check-conflicts` | Análisis de conflictos IA en lote |
+| GET | `/tasks/me` | Mis tareas |
+| POST | `/tasks` | Crear tarea (IA asigna prioridad) |
+| PATCH | `/tasks/:id` | Actualizar tarea |
+| DELETE | `/tasks/:id` | Eliminar tarea |
+| GET | `/matches/me` | Mis matches IA |
+| POST | `/matches/:id/accept` | Aceptar match |
+| POST | `/matches/:id/reject` | Rechazar match |
+| GET | `/matches/connections` | Conexiones mutuas |
+| GET | `/notifications` | Mis notificaciones |
+| GET | `/notifications/unread-count` | Contador no leídas |
+| DELETE | `/notifications/all` | Borrar todas |
+| DELETE | `/notifications/:id` | Borrar una notificación |
 | GET | `/conversations` | Lista de conversaciones |
 | GET | `/interests/grouped` | Catálogo de intereses por categoría |
 | GET | `/universities` | Lista de universidades registradas |

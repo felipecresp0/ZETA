@@ -23,7 +23,7 @@ import { Colors } from '../../theme/colors';
 import { Spacing } from '../../theme/spacing';
 import api from '../../services/api';
 import { Calendar, DateData } from 'react-native-calendars';
-import eventsService, { CreateEventPayload, RsvpSummary } from '../../services/eventsService';
+import eventsService, { CreateEventPayload, RsvpSummary, ConflictAnalysis } from '../../services/eventsService';
 import { ZAvatar } from '../../components/ZAvatar';
 import {
     SocketService,
@@ -107,6 +107,8 @@ export const ChatScreen: React.FC = () => {
     const [manageHour, setManageHour] = useState(12);
     const [manageMinute, setManageMinute] = useState(0);
     const [updatingEvent, setUpdatingEvent] = useState(false);
+    const [conflictData, setConflictData] = useState<ConflictAnalysis | null>(null);
+    const [showConflictModal, setShowConflictModal] = useState(false);
 
     const flatListRef = useRef<FlatList>(null);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -282,6 +284,12 @@ export const ChatScreen: React.FC = () => {
             setEventDate('');
             setEventHour(12);
             setEventMinute(0);
+
+            // Mostrar conflictos IA si los hay
+            if (created.conflicts?.has_conflicts) {
+                setConflictData(created.conflicts);
+                setShowConflictModal(true);
+            }
         } catch (e: any) {
             Alert.alert('Error', e?.response?.data?.message || 'No se pudo crear el evento');
         } finally {
@@ -292,8 +300,14 @@ export const ChatScreen: React.FC = () => {
     // ── RSVP: confirmar / declinar asistencia ──
     const handleRsvp = async (eventId: string, status: 'going' | 'not_going') => {
         try {
-            const summary = await eventsService.rsvp(eventId, status);
-            setRsvpCache(prev => ({ ...prev, [eventId]: summary }));
+            const result = await eventsService.rsvp(eventId, status);
+            setRsvpCache(prev => ({ ...prev, [eventId]: result }));
+
+            // Mostrar conflictos IA si confirma asistencia y los hay
+            if (status === 'going' && result.conflicts?.has_conflicts) {
+                setConflictData(result.conflicts);
+                setShowConflictModal(true);
+            }
         } catch (e: any) {
             Alert.alert('Error', 'No se pudo registrar tu respuesta');
         }
@@ -1166,6 +1180,92 @@ export const ChatScreen: React.FC = () => {
                     </View>
                 </View>
             </Modal>
+
+            {/* ── Modal de conflictos IA ── */}
+            <Modal visible={showConflictModal} transparent animationType="fade">
+                <View style={styles.conflictOverlay}>
+                    <View style={styles.conflictModal}>
+                        <View style={styles.conflictHeader}>
+                            <View style={styles.conflictIconWrap}>
+                                <Feather name="alert-triangle" size={24} color="#F59E0B" />
+                            </View>
+                            <Text style={styles.conflictTitle}>Conflictos detectados</Text>
+                            <TouchableOpacity onPress={() => setShowConflictModal(false)}>
+                                <Feather name="x" size={22} color={Colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={styles.conflictBody} showsVerticalScrollIndicator={false}>
+                            {conflictData?.summary && (
+                                <Text style={styles.conflictSummary}>{conflictData.summary}</Text>
+                            )}
+
+                            {conflictData?.conflicts?.map((c, i) => (
+                                <View key={i} style={[
+                                    styles.conflictItem,
+                                    c.severity === 'high' && styles.conflictItemHigh,
+                                    c.severity === 'medium' && styles.conflictItemMedium,
+                                    c.severity === 'low' && styles.conflictItemLow,
+                                ]}>
+                                    <View style={styles.conflictItemHeader}>
+                                        <Feather
+                                            name={c.severity === 'high' ? 'alert-circle' : c.severity === 'medium' ? 'alert-triangle' : 'info'}
+                                            size={16}
+                                            color={c.severity === 'high' ? '#EF4444' : c.severity === 'medium' ? '#F59E0B' : '#6B7280'}
+                                        />
+                                        <Text style={[
+                                            styles.conflictSeverity,
+                                            c.severity === 'high' && { color: '#EF4444' },
+                                            c.severity === 'medium' && { color: '#F59E0B' },
+                                            c.severity === 'low' && { color: '#6B7280' },
+                                        ]}>
+                                            {c.severity === 'high' ? 'Alta' : c.severity === 'medium' ? 'Media' : 'Baja'}
+                                        </Text>
+                                    </View>
+                                    <Text style={styles.conflictDesc}>{c.description}</Text>
+                                </View>
+                            ))}
+
+                            {conflictData?.recommendations && conflictData.recommendations.length > 0 && (
+                                <View style={styles.conflictSection}>
+                                    <View style={styles.conflictSectionHeader}>
+                                        <Feather name="cpu" size={14} color={Colors.primary} />
+                                        <Text style={styles.conflictSectionTitle}>Recomendaciones IA</Text>
+                                    </View>
+                                    {conflictData.recommendations.map((r, i) => (
+                                        <View key={i} style={styles.recommendationItem}>
+                                            <Text style={styles.recommendationBullet}>•</Text>
+                                            <Text style={styles.recommendationText}>{r}</Text>
+                                        </View>
+                                    ))}
+                                </View>
+                            )}
+
+                            {conflictData?.suggested_times && conflictData.suggested_times.length > 0 && (
+                                <View style={styles.conflictSection}>
+                                    <View style={styles.conflictSectionHeader}>
+                                        <Feather name="clock" size={14} color="#10B981" />
+                                        <Text style={styles.conflictSectionTitle}>Horarios sugeridos</Text>
+                                    </View>
+                                    {conflictData.suggested_times.map((t, i) => (
+                                        <View key={i} style={styles.suggestedTimeChip}>
+                                            <Feather name="check" size={12} color="#10B981" />
+                                            <Text style={styles.suggestedTimeText}>{t}</Text>
+                                        </View>
+                                    ))}
+                                </View>
+                            )}
+                        </ScrollView>
+
+                        <TouchableOpacity
+                            style={styles.conflictCloseBtn}
+                            onPress={() => setShowConflictModal(false)}
+                        >
+                            <Text style={styles.conflictCloseBtnText}>Entendido</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </KeyboardAvoidingView>
     );
 };
@@ -1430,4 +1530,57 @@ const styles = StyleSheet.create({
         borderRadius: 14, paddingVertical: 16, alignItems: 'center',
     },
     modalCreateBtnText: { fontSize: 16, fontWeight: '600', color: '#FFF' },
+
+    // ── Conflict modal ──
+    conflictOverlay: {
+        flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center', paddingHorizontal: 20,
+    },
+    conflictModal: {
+        backgroundColor: Colors.white, borderRadius: 20,
+        maxHeight: '80%', overflow: 'hidden',
+    },
+    conflictHeader: {
+        flexDirection: 'row', alignItems: 'center', gap: 10,
+        padding: 20, paddingBottom: 14,
+        borderBottomWidth: 1, borderBottomColor: Colors.border,
+    },
+    conflictIconWrap: {
+        width: 40, height: 40, borderRadius: 20,
+        backgroundColor: '#FEF3C7', justifyContent: 'center', alignItems: 'center',
+    },
+    conflictTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: Colors.text },
+    conflictBody: { padding: 20, paddingTop: 16 },
+    conflictSummary: {
+        fontSize: 14, color: Colors.textSecondary, lineHeight: 20, marginBottom: 16,
+    },
+    conflictItem: {
+        borderRadius: 12, padding: 14, marginBottom: 10,
+        borderLeftWidth: 3,
+    },
+    conflictItemHigh: { backgroundColor: '#FEE2E2', borderLeftColor: '#EF4444' },
+    conflictItemMedium: { backgroundColor: '#FEF3C7', borderLeftColor: '#F59E0B' },
+    conflictItemLow: { backgroundColor: '#F3F4F6', borderLeftColor: '#6B7280' },
+    conflictItemHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+    conflictSeverity: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+    conflictDesc: { fontSize: 14, color: Colors.text, lineHeight: 20 },
+    conflictSection: { marginTop: 16 },
+    conflictSectionHeader: {
+        flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10,
+    },
+    conflictSectionTitle: { fontSize: 14, fontWeight: '700', color: Colors.text },
+    recommendationItem: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+    recommendationBullet: { fontSize: 14, color: Colors.primary, fontWeight: '700' },
+    recommendationText: { fontSize: 14, color: Colors.text, lineHeight: 20, flex: 1 },
+    suggestedTimeChip: {
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        backgroundColor: '#ECFDF5', paddingHorizontal: 12, paddingVertical: 8,
+        borderRadius: 10, marginBottom: 6,
+    },
+    suggestedTimeText: { fontSize: 13, color: '#059669', fontWeight: '600' },
+    conflictCloseBtn: {
+        backgroundColor: Colors.primary, marginHorizontal: 20, marginBottom: 20,
+        borderRadius: 14, paddingVertical: 14, alignItems: 'center',
+    },
+    conflictCloseBtnText: { fontSize: 16, fontWeight: '600', color: '#FFF' },
 });

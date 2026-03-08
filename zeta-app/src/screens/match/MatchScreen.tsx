@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
     Dimensions, Alert, Animated, PanResponder, Image, ScrollView,
@@ -47,6 +47,7 @@ export const MatchScreen: React.FC = () => {
     const [currentIdx, setCurrentIdx] = useState(0);
     const [actionLoading, setActionLoading] = useState(false);
     const [photoIdx, setPhotoIdx] = useState(0);
+    const [waitingAI, setWaitingAI] = useState(false);
 
     // Refs para acceder al estado actual desde el PanResponder
     const matchesRef = useRef<MatchItem[]>([]);
@@ -121,6 +122,8 @@ export const MatchScreen: React.FC = () => {
     };
 
     // ── Data loading ──
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
     const loadData = useCallback(async () => {
         try {
             const [matchRes, connRes] = await Promise.all([
@@ -130,8 +133,10 @@ export const MatchScreen: React.FC = () => {
             setMatches(matchRes.data);
             setConnections(connRes.data);
             setCurrentIdx(0);
+            return matchRes.data.length;
         } catch (err) {
             console.error('Error cargando matches:', err);
+            return -1;
         } finally {
             setLoading(false);
         }
@@ -139,7 +144,42 @@ export const MatchScreen: React.FC = () => {
 
     useFocusEffect(
         useCallback(() => {
-            loadData();
+            loadData().then(count => {
+                // Si no hay matches, el workflow de IA puede estar generandolos
+                // Polling cada 4s hasta que aparezcan (max 8 intentos = ~32s)
+                if (count === 0) {
+                    setWaitingAI(true);
+                    let attempts = 0;
+                    pollRef.current = setInterval(async () => {
+                        attempts++;
+                        try {
+                            const { data } = await api.get('/matches/me');
+                            if (data.length > 0) {
+                                setMatches(data);
+                                setCurrentIdx(0);
+                                setWaitingAI(false);
+                                if (pollRef.current) clearInterval(pollRef.current);
+                                pollRef.current = null;
+                            } else if (attempts >= 8) {
+                                setWaitingAI(false);
+                                if (pollRef.current) clearInterval(pollRef.current);
+                                pollRef.current = null;
+                            }
+                        } catch {
+                            setWaitingAI(false);
+                            if (pollRef.current) clearInterval(pollRef.current);
+                            pollRef.current = null;
+                        }
+                    }, 4000);
+                }
+            });
+
+            return () => {
+                if (pollRef.current) {
+                    clearInterval(pollRef.current);
+                    pollRef.current = null;
+                }
+            };
         }, [loadData]),
     );
 
@@ -148,8 +188,8 @@ export const MatchScreen: React.FC = () => {
         if (!match) return;
         try {
             const { data } = await api.patch(`/matches/${match.id}/accept`);
-            setConnections(prev => [...prev, { ...match, status: 'accepted' }]);
             if (data.mutual) {
+                setConnections(prev => [...prev, { ...match, status: 'accepted' }]);
                 Alert.alert(
                     '¡Match mutuo! 🎉',
                     `${match.matchedUser.name} y tú habéis conectado. Se ha creado un chat directo.`,
@@ -395,11 +435,23 @@ export const MatchScreen: React.FC = () => {
                 <View style={s.swipeArea}>
                     {noMoreMatches ? (
                         <View style={s.empty}>
-                            <Feather name="check-circle" size={56} color={Colors.grayLight} />
-                            <Text style={s.emptyTitle}>¡Has visto todos los matches!</Text>
-                            <Text style={s.emptySub}>
-                                Nuevas sugerencias aparecerán cuando se unan más compañeros
-                            </Text>
+                            {waitingAI ? (
+                                <>
+                                    <ActivityIndicator size="large" color={Colors.primary} style={{ marginBottom: 16 }} />
+                                    <Text style={s.emptyTitle}>Buscando perfiles afines...</Text>
+                                    <Text style={s.emptySub}>
+                                        Nuestra IA esta analizando tu perfil para encontrar los mejores matches
+                                    </Text>
+                                </>
+                            ) : (
+                                <>
+                                    <Feather name="check-circle" size={56} color={Colors.grayLight} />
+                                    <Text style={s.emptyTitle}>¡Has visto todos los matches!</Text>
+                                    <Text style={s.emptySub}>
+                                        Nuevas sugerencias aparecerán cuando se unan más compañeros
+                                    </Text>
+                                </>
+                            )}
                             <TouchableOpacity style={s.refreshBtn} onPress={loadData}>
                                 <Feather name="refresh-cw" size={16} color={Colors.primary} />
                                 <Text style={s.refreshText}>Actualizar</Text>

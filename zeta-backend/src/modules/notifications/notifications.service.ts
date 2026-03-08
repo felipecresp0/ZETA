@@ -58,6 +58,18 @@ export class NotificationsService {
         return { message: 'Todas marcadas como leídas' };
     }
 
+    // ── Eliminar una notificación ──
+    async deleteOne(notifId: string, userId: string) {
+        await this.notifRepo.delete({ id: notifId, user_id: userId });
+        return { message: 'Notificación eliminada' };
+    }
+
+    // ── Eliminar todas las notificaciones ──
+    async deleteAll(userId: string) {
+        await this.notifRepo.delete({ user_id: userId });
+        return { message: 'Todas las notificaciones eliminadas' };
+    }
+
     // ── Contador de no leídas ──
     async getUnreadCount(userId: string) {
         const count = await this.notifRepo.count({

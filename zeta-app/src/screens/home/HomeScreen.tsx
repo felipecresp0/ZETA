@@ -78,6 +78,7 @@ export const HomeScreen: React.FC = () => {
     const [groups, setGroups] = useState<Group[]>([]);
     const [events, setEvents] = useState<EventNear[]>([]);
     const [chats, setChats] = useState<RecentChat[]>([]);
+    const [hasUnread, setHasUnread] = useState(false);
 
     const loadFeed = useCallback(async () => {
         try {
@@ -176,11 +177,19 @@ export const HomeScreen: React.FC = () => {
         }
     }, [user?.id]);
 
+    const checkUnread = useCallback(async () => {
+        try {
+            const { data } = await api.get('/notifications/unread-count');
+            setHasUnread(data.count > 0);
+        } catch { setHasUnread(false); }
+    }, []);
+
     // Recargar al volver a la pantalla
     useFocusEffect(
         useCallback(() => {
             loadFeed();
-        }, [loadFeed])
+            checkUnread();
+        }, [loadFeed, checkUnread])
     );
 
     const onRefresh = async () => {
@@ -239,7 +248,7 @@ export const HomeScreen: React.FC = () => {
                     </TouchableOpacity>
                     <TouchableOpacity style={s.iconButton} onPress={() => nav.navigate('Notifications')}>
                         <Feather name="bell" size={22} color={Colors.text} />
-                        <View style={s.notifDot} />
+                        {hasUnread && <View style={s.notifDot} />}
                     </TouchableOpacity>
                 </View>
             </View>

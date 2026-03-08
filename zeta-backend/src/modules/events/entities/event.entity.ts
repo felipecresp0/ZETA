@@ -22,12 +22,12 @@ export class Event {
     @Column({ nullable: true })
     location: string;          // "Cafetería Campus"
 
-    @ManyToOne(() => Group, (g) => g.events, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Group, (g) => g.events, { onDelete: 'CASCADE', nullable: true })
     @JoinColumn({ name: 'group_id' })
     group: Group;
 
-    @Column()
-    group_id: string;
+    @Column({ nullable: true })
+    group_id: string | null;
 
     @ManyToOne(() => User)
     @JoinColumn({ name: 'creator_id' })

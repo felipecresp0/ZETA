@@ -31,6 +31,24 @@ export class EventsController {
         return this.eventsService.findByGroup(groupId);
     }
 
+    // POST /api/events/check-conflicts — Analizar conflictos IA en lote
+    @Post('check-conflicts')
+    checkBulkConflicts(
+        @Body('event_ids') eventIds: string[],
+        @CurrentUser('id') userId: string,
+    ) {
+        return this.eventsService.checkBulkConflicts(eventIds, userId);
+    }
+
+    // GET /api/events/:id/conflicts — Analizar conflictos IA de un evento
+    @Get(':id/conflicts')
+    checkConflicts(
+        @Param('id') eventId: string,
+        @CurrentUser('id') userId: string,
+    ) {
+        return this.eventsService.checkConflicts(eventId, userId);
+    }
+
     // POST /api/events/:id/rsvp — Confirmar o declinar asistencia
     @Post(':id/rsvp')
     rsvp(

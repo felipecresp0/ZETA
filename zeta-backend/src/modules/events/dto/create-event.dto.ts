@@ -16,7 +16,7 @@ export class CreateEventDto {
     @IsString()
     location?: string;
 
-    @IsNotEmpty()
+    @IsOptional()
     @IsString()
-    group_id: string;
+    group_id?: string;
 }

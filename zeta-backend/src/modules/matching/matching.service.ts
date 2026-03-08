@@ -66,13 +66,26 @@ export class MatchingService {
         return match;
     }
 
-    // Matches aceptados (pantalla de conexiones)
+    // Matches mutuos (pantalla de conexiones) — solo donde ambos aceptaron
     async findMyConnections(userId: string) {
-        return this.matchRepo.find({
-            where: { user_id: userId, status: 'accepted' },
-            relations: ['matchedUser', 'matchedUser.interests', 'matchedUser.academicOffer', 'matchedUser.academicOffer.career'],
-            order: { created_at: 'DESC' },
-        });
+        return this.matchRepo
+            .createQueryBuilder('match')
+            .leftJoinAndSelect('match.matchedUser', 'matchedUser')
+            .leftJoinAndSelect('matchedUser.interests', 'interests')
+            .leftJoinAndSelect('matchedUser.academicOffer', 'academicOffer')
+            .leftJoinAndSelect('academicOffer.career', 'career')
+            .where('match.user_id = :userId', { userId })
+            .andWhere('match.status = :status', { status: 'accepted' })
+            .andWhere(
+                `EXISTS (
+                    SELECT 1 FROM matches reciprocal
+                    WHERE reciprocal.user_id = match.matched_user_id
+                      AND reciprocal.matched_user_id = :userId
+                      AND reciprocal.status = :status
+                )`,
+            )
+            .orderBy('match.created_at', 'DESC')
+            .getMany();
     }
 
     async notifyMatches(userIds: string[], matchCount: number) {

@@ -23,7 +23,7 @@ export interface CreateEventPayload {
     description?: string;
     event_date: string;        // ISO string — "2026-03-01T18:00:00Z"
     location?: string;
-    group_id: string;
+    group_id?: string;         // Opcional: si no se pasa, es evento universitario general
 }
 
 export interface UpdateEventPayload {
@@ -41,6 +41,28 @@ export interface RsvpSummary {
     creator_id: string;
     going_users: { id: string; name: string }[];
     not_going_users: { id: string; name: string }[];
+}
+
+export interface ConflictItem {
+    type: string;       // 'event_task' | 'event_event' | 'task_task'
+    severity: string;   // 'high' | 'medium' | 'low'
+    description: string;
+}
+
+export interface ConflictAnalysis {
+    has_conflicts: boolean;
+    conflicts: ConflictItem[];
+    recommendations: string[];
+    suggested_times: string[];
+    summary: string;
+}
+
+export interface EventWithConflicts extends ZetaEvent {
+    conflicts?: ConflictAnalysis | null;
+}
+
+export interface RsvpWithConflicts extends RsvpSummary {
+    conflicts?: ConflictAnalysis | null;
 }
 
 // ── API calls ──
@@ -63,8 +85,8 @@ const eventsService = {
         return data;
     },
 
-    /** Crear evento (requiere ser miembro del grupo) */
-    create: async (payload: CreateEventPayload): Promise<ZetaEvent> => {
+    /** Crear evento (requiere ser miembro del grupo) — devuelve conflictos IA */
+    create: async (payload: CreateEventPayload): Promise<EventWithConflicts> => {
         const { data } = await api.post('/events', payload);
         return data;
     },
@@ -80,8 +102,8 @@ const eventsService = {
         await api.delete(`/events/${eventId}`);
     },
 
-    /** RSVP: confirmar o declinar asistencia */
-    rsvp: async (eventId: string, status: 'going' | 'not_going'): Promise<RsvpSummary> => {
+    /** RSVP: confirmar o declinar asistencia — devuelve conflictos si status='going' */
+    rsvp: async (eventId: string, status: 'going' | 'not_going'): Promise<RsvpWithConflicts> => {
         const { data } = await api.post(`/events/${eventId}/rsvp`, { status });
         return data;
     },
@@ -89,6 +111,12 @@ const eventsService = {
     /** Obtener resumen de RSVP */
     getRsvp: async (eventId: string): Promise<RsvpSummary> => {
         const { data } = await api.get(`/events/${eventId}/rsvp`);
+        return data;
+    },
+
+    /** Analizar conflictos IA de varios eventos en lote */
+    checkBulkConflicts: async (eventIds: string[]): Promise<(ConflictAnalysis & { event_id: string })[]> => {
+        const { data } = await api.post('/events/check-conflicts', { event_ids: eventIds });
         return data;
     },
 };

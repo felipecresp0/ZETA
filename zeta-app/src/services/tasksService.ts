@@ -6,7 +6,7 @@ export interface Task {
     title: string;
     description?: string;
     subject?: string;
-    due_date?: string;
+    due_date: string;
     estimated_hours?: number;
     priority: 'low' | 'medium' | 'high' | 'urgent';
     status: 'pending' | 'in_progress' | 'completed';
@@ -21,7 +21,7 @@ export interface CreateTaskPayload {
     title: string;
     description?: string;
     subject?: string;
-    due_date?: string;
+    due_date: string;
     estimated_hours?: number;
     priority?: string;
     group_id?: string;

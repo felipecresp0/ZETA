@@ -16,9 +16,9 @@ export class CreateTaskDto {
     @IsString()
     subject?: string;
 
-    @IsOptional()
+    @IsNotEmpty()
     @IsDateString()
-    due_date?: string;
+    due_date: string;
 
     @IsOptional()
     @IsNumber()

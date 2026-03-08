@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { InjectModel } from '@nestjs/mongoose';
 import { Repository, MoreThanOrEqual } from 'typeorm';
 import { Model } from 'mongoose';
+import axios from 'axios';
 import { Event } from './entities/event.entity';
 import { EventRsvp } from './entities/event-rsvp.entity';
 import { GroupMember } from '../groups/entities/group-member.entity';
@@ -27,17 +28,19 @@ export class EventsService {
         private readonly notificationsService: NotificationsService,
     ) { }
 
-    // ── Crear evento dentro de un grupo ──
+    // ── Crear evento (con análisis IA de conflictos) ──
     async create(dto: CreateEventDto, userId: string) {
-        // Verificar que el usuario es miembro del grupo
-        await this.assertMember(dto.group_id, userId);
+        // Verificar membresía solo si es evento de grupo
+        if (dto.group_id) {
+            await this.assertMember(dto.group_id, userId);
+        }
 
         const event = this.eventRepo.create({
             name: dto.name,
             description: dto.description,
             event_date: new Date(dto.event_date),
             location: dto.location,
-            group_id: dto.group_id,
+            group_id: dto.group_id || null,
             creator_id: userId,
         });
 
@@ -51,7 +54,54 @@ export class EventsService {
         });
         await this.rsvpRepo.save(rsvp);
 
-        return this.findOne(saved.id);
+        // ── Analizar conflictos de calendario con IA (n8n + Gemini) ──
+        let conflicts: {
+                has_conflicts: boolean;
+                conflicts: Array<{ type: string; severity: string; description: string }>;
+                recommendations: string[];
+                suggested_times: string[];
+                summary: string;
+            } | null = null;
+        try {
+            const n8nUrl = process.env.N8N_WEBHOOK_CALENDAR_CONFLICTS
+                || 'http://localhost:5678/webhook/calendar-conflict';
+
+            console.log('[Events] Llamando a n8n calendar-conflicts:', n8nUrl);
+            console.log('[Events] Payload:', { event_id: saved.id, user_id: userId, event_date: dto.event_date, event_name: dto.name });
+
+            const { data } = await axios.post(n8nUrl, {
+                event_id: saved.id,
+                user_id: userId,
+                event_date: dto.event_date,
+                event_name: dto.name,
+            }, { timeout: 30000 });
+
+            console.log('[Events] Respuesta n8n:', JSON.stringify(data).slice(0, 500));
+
+            // Mapear respuesta al formato esperado por el frontend
+            conflicts = {
+                has_conflicts: data.has_conflicts || false,
+                conflicts: data.conflicts || [],
+                recommendations: data.recommendations || [],
+                suggested_times: data.suggested_times || [],
+                summary: data.summary || 'Análisis completado',
+            };
+        } catch (err) {
+            // Si n8n falla, no rompemos la creación del evento
+            console.error('[Events] Error al analizar conflictos:', err.message);
+            if (err.code) console.error('[Events] Error code:', err.code);
+            if (err.response) console.error('[Events] Response status:', err.response.status, err.response.data);
+            conflicts = {
+                has_conflicts: false,
+                conflicts: [],
+                recommendations: [],
+                suggested_times: [],
+                summary: 'No se pudo conectar con el asistente IA',
+            };
+        }
+
+        const eventData = await this.findOne(saved.id);
+        return { ...eventData, conflicts };
     }
 
     // ── Eventos de un grupo ──
@@ -63,12 +113,12 @@ export class EventsService {
         });
     }
 
-    // ── Mis eventos próximos (RSVP "going" o soy el creador) ──
+    // ── Mis eventos próximos (grupos + universitarios sin grupo) ──
     async findMyUpcoming(userId: string) {
-        const goingRsvps = await this.rsvpRepo.find({
-            where: { user_id: userId, status: 'going' },
+        const memberships = await this.memberRepo.find({
+            where: { user_id: userId },
         });
-        const goingEventIds = goingRsvps.map(r => r.event_id);
+        const groupIds = memberships.map(m => m.group_id);
 
         const qb = this.eventRepo
             .createQueryBuilder('event')
@@ -76,13 +126,10 @@ export class EventsService {
             .leftJoinAndSelect('event.creator', 'creator')
             .where('event.event_date >= :now', { now: new Date() });
 
-        if (goingEventIds.length > 0) {
-            qb.andWhere(
-                '(event.id IN (:...goingEventIds) OR event.creator_id = :userId)',
-                { goingEventIds, userId },
-            );
+        if (groupIds.length > 0) {
+            qb.andWhere('(event.group_id IN (:...groupIds) OR event.group_id IS NULL)', { groupIds });
         } else {
-            qb.andWhere('event.creator_id = :userId', { userId });
+            qb.andWhere('event.group_id IS NULL');
         }
 
         return qb
@@ -109,8 +156,9 @@ export class EventsService {
 
         // Solo el creador del evento o un admin del grupo pueden editar
         if (event.creator_id !== userId) {
+            if (!event.group_id) throw new ForbiddenException('No tienes permiso para editar este evento');
             const member = await this.memberRepo.findOne({
-                where: { group_id: event.group_id, user_id: userId },
+                where: { group_id: event.group_id!, user_id: userId },
             });
             if (!member || member.role !== 'admin') {
                 throw new ForbiddenException('No tienes permiso para editar este evento');
@@ -132,8 +180,9 @@ export class EventsService {
 
         // Solo el creador del evento o un admin del grupo pueden eliminar
         if (event.creator_id !== userId) {
+            if (!event.group_id) throw new ForbiddenException('No tienes permiso para eliminar este evento');
             const member = await this.memberRepo.findOne({
-                where: { group_id: event.group_id, user_id: userId },
+                where: { group_id: event.group_id!, user_id: userId },
             });
             if (!member || member.role !== 'admin') {
                 throw new ForbiddenException('No tienes permiso para eliminar este evento');
@@ -155,8 +204,10 @@ export class EventsService {
         const event = await this.eventRepo.findOne({ where: { id: eventId } });
         if (!event) throw new NotFoundException('Evento no encontrado');
 
-        // Verificar que es miembro del grupo
-        await this.assertMember(event.group_id, userId);
+        // Verificar membresía solo si es evento de grupo
+        if (event.group_id) {
+            await this.assertMember(event.group_id, userId);
+        }
 
         // Upsert RSVP
         let rsvp = await this.rsvpRepo.findOne({
@@ -186,7 +237,49 @@ export class EventsService {
             });
         }
 
-        return this.getRsvpSummary(eventId, userId);
+        const summary = await this.getRsvpSummary(eventId, userId);
+
+        // ── Analizar conflictos de calendario con IA al confirmar asistencia ──
+        if (status === 'going') {
+            let conflicts: {
+                has_conflicts: boolean;
+                conflicts: Array<{ type: string; severity: string; description: string }>;
+                recommendations: string[];
+                suggested_times: string[];
+                summary: string;
+            } | null = null;
+            try {
+                const n8nUrl = process.env.N8N_WEBHOOK_CALENDAR_CONFLICTS
+                    || 'http://localhost:5678/webhook/calendar-conflict';
+
+                console.log('[Events RSVP] Llamando a n8n calendar-conflicts:', n8nUrl);
+
+                const { data } = await axios.post(n8nUrl, {
+                    event_id: event.id,
+                    user_id: userId,
+                    event_date: event.event_date.toISOString(),
+                    event_name: event.name,
+                }, { timeout: 30000 });
+
+                console.log('[Events RSVP] Respuesta n8n:', JSON.stringify(data).slice(0, 500));
+
+                conflicts = {
+                    has_conflicts: data.has_conflicts || false,
+                    conflicts: data.conflicts || [],
+                    recommendations: data.recommendations || [],
+                    suggested_times: data.suggested_times || [],
+                    summary: data.summary || 'Análisis completado',
+                };
+            } catch (err) {
+                console.error('[Events RSVP] Error al analizar conflictos:', err.message);
+                if (err.code) console.error('[Events RSVP] Error code:', err.code);
+                if (err.response) console.error('[Events RSVP] Response status:', err.response.status, err.response.data);
+            }
+
+            return { ...summary, conflicts };
+        }
+
+        return summary;
     }
 
     // ── Obtener resumen de RSVPs de un evento ──
@@ -226,6 +319,57 @@ export class EventsService {
                 name: r.user?.name,
             })),
         };
+    }
+
+    // ── Analizar conflictos de un evento existente ──
+    async checkConflicts(eventId: string, userId: string) {
+        const event = await this.eventRepo.findOne({ where: { id: eventId } });
+        if (!event) throw new NotFoundException('Evento no encontrado');
+
+        try {
+            const n8nUrl = process.env.N8N_WEBHOOK_CALENDAR_CONFLICTS
+                || 'http://localhost:5678/webhook/calendar-conflict';
+
+            console.log(`[Events] checkConflicts event=${eventId} url=${n8nUrl}`);
+
+            const { data } = await axios.post(n8nUrl, {
+                event_id: event.id,
+                user_id: userId,
+                event_date: event.event_date.toISOString(),
+                event_name: event.name,
+            }, { timeout: 30000 });
+
+            console.log(`[Events] checkConflicts response:`, JSON.stringify(data).slice(0, 300));
+
+            return {
+                event_id: eventId,
+                has_conflicts: data.has_conflicts || false,
+                conflicts: data.conflicts || [],
+                recommendations: data.recommendations || [],
+                suggested_times: data.suggested_times || [],
+                summary: data.summary || 'Análisis completado',
+            };
+        } catch (err) {
+            console.error('[Events] Error checkConflicts:', err.message);
+            if (err.code) console.error('[Events] Error code:', err.code);
+            if (err.response) console.error('[Events] Response:', err.response.status, err.response.data);
+            return {
+                event_id: eventId,
+                has_conflicts: false,
+                conflicts: [],
+                recommendations: [],
+                suggested_times: [],
+                summary: 'No se pudo conectar con el asistente IA',
+            };
+        }
+    }
+
+    // ── Analizar conflictos de varios eventos en lote ──
+    async checkBulkConflicts(eventIds: string[], userId: string) {
+        const results = await Promise.all(
+            eventIds.map(id => this.checkConflicts(id, userId)),
+        );
+        return results;
     }
 
     // ── Helper: verificar membresía ──
